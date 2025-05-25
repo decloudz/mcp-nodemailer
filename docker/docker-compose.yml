@@ -1,0 +1,80 @@
+version: '3.8'
+
+services:
+  # Gmail configuration example
+  mcp-nodemailer-gmail:
+    build: .
+    container_name: mcp-nodemailer-gmail
+    environment:
+      - EMAIL_SERVICE=gmail
+      - GMAIL_USER=${GMAIL_USER}
+      - GMAIL_PASS=${GMAIL_PASS}
+      - SENDER_EMAIL_ADDRESS=${GMAIL_USER}
+      - DEBUG=true
+    stdin_open: true
+    tty: true
+    profiles:
+      - gmail
+
+  # AWS SES SMTP configuration
+  mcp-nodemailer-ses-smtp:
+    build: .
+    container_name: mcp-nodemailer-ses-smtp
+    environment:
+      - SMTP_HOST=email-smtp.us-east-1.amazonaws.com
+      - SMTP_PORT=587
+      - SMTP_SECURE=false
+      - SMTP_USER=${SES_SMTP_USER}
+      - SMTP_PASS=${SES_SMTP_PASS}
+      - SENDER_EMAIL_ADDRESS=${SES_SENDER_EMAIL}
+      - DEBUG=true
+      - SMTP_POOL=true
+      - SMTP_MAX_CONNECTIONS=5
+    stdin_open: true
+    tty: true
+    profiles:
+      - ses-smtp
+
+  # AWS SES API configuration
+  mcp-nodemailer-ses-api:
+    build: .
+    container_name: mcp-nodemailer-ses-api
+    environment:
+      - EMAIL_SERVICE=ses
+      - AWS_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - SENDER_EMAIL_ADDRESS=${SES_SENDER_EMAIL}
+      - DEBUG=true
+    stdin_open: true
+    tty: true
+    profiles:
+      - ses-api
+
+  # Custom SMTP configuration
+  mcp-nodemailer-custom:
+    build: .
+    container_name: mcp-nodemailer-custom
+    environment:
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_SECURE=${SMTP_SECURE:-false}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASS=${SMTP_PASS}
+      - SENDER_EMAIL_ADDRESS=${SENDER_EMAIL_ADDRESS}
+      - DEBUG=true
+    stdin_open: true
+    tty: true
+    profiles:
+      - custom
+
+  # Test/Development with Ethereal Email
+  mcp-nodemailer-test:
+    build: .
+    container_name: mcp-nodemailer-test
+    environment:
+      - DEBUG=true
+    stdin_open: true
+    tty: true
+    profiles:
+      - test 
