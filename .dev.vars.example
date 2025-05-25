@@ -1,0 +1,42 @@
+ # OAuth Configuration
+GITHUB_CLIENT_ID=
+GITHUB_CLIENT_SECRET=
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+HOSTED_DOMAIN=
+COOKIE_ENCRYPTION_KEY=
+
+# Stripe Configuration (for paid email features)
+STRIPE_PUBLISHABLE_KEY=
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+STRIPE_ONE_TIME_PRICE_ID=
+STRIPE_SUBSCRIPTION_PRICE_ID=
+STRIPE_METERED_PRICE_ID=
+
+# Base URL
+BASE_URL=http://localhost:8787
+
+# Email Service Configuration
+EMAIL_SERVICE=smtp
+
+# SMTP Configuration
+SMTP_HOST=email-smtp.us-east-1.amazonaws.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=AKIA256X4BH57AV2ZCHM
+SMTP_PASS=BEByPtg3+uQU3QVdUvpy7EZKlidtPTYenNWYcFcP3s4o
+
+# Gmail Configuration
+GMAIL_USER=your-email@gmail.com
+GMAIL_PASS=your-app-password
+
+# AWS SES Configuration
+AWS_ACCESS_KEY_ID=your-access-key-id
+AWS_SECRET_ACCESS_KEY=your-secret-access-key
+AWS_REGION=us-east-1
+
+# Default Email Settings
+DEFAULT_SENDER_EMAIL=noreply@your-domain.com
+DEFAULT_REPLY_TO_EMAILS=support@your-domain.com
+DEBUG_EMAIL=true

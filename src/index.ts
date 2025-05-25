@@ -1,272 +1,236 @@
-#!/usr/bin/env node
+import OAuthProvider from "@cloudflare/workers-oauth-provider";
+import { GoogleHandler } from "./auth/google-handler.js";
+import { Props } from "./auth/oauth.js";
+import {
+	PaymentState,
+	experimental_PaidMcpAgent as PaidMcpAgent,
+} from '@stripe/agent-toolkit/cloudflare';
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import stripeWebhookHandler from "./webhooks/stripe.js";
+import * as tools from './tools/index.js';
+import { CloudflareEmailConfigManager } from "./email/config-manager.js";
+import { CloudflareTransportFactory } from "./email/transport-factory.js";
 
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { ConfigurationManager } from './config-manager.js';
-import { TransportFactory } from './transport-factory.js';
-import { EmailValidator } from './email-validator.js';
-import { z } from 'zod';
-import type { Transporter } from 'nodemailer';
+type State = PaymentState & {};
 
-class NodemailerMCPServer {
-  private server: McpServer;
-  private configManager: ConfigurationManager;
-  private transporter!: Transporter;
+type AgentProps = Props & {
+	STRIPE_SUBSCRIPTION_PRICE_ID: string;
+	STRIPE_METERED_PRICE_ID: string;
+	BASE_URL: string;
+};
 
-  constructor() {
-    this.server = new McpServer({
-      name: 'nodemailer-email-service',
-      version: '1.0.0',
-    });
+export interface Env {
+  // OAuth Configuration
+  GITHUB_CLIENT_ID?: string;
+  GITHUB_CLIENT_SECRET?: string;
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
+  HOSTED_DOMAIN?: string;
+  COOKIE_ENCRYPTION_KEY?: string;
 
-    this.configManager = new ConfigurationManager();
-    this.setupServer();
-  }
+  // Stripe Configuration
+  STRIPE_PUBLISHABLE_KEY?: string;
+  STRIPE_SECRET_KEY?: string;
+  STRIPE_WEBHOOK_SECRET?: string;
+  STRIPE_ONE_TIME_PRICE_ID?: string;
+  STRIPE_SUBSCRIPTION_PRICE_ID?: string;
+  STRIPE_METERED_PRICE_ID?: string;
 
-  private setupServer(): void {
-    try {
-      // Validate configuration
-      this.configManager.validateConfig();
-      
-      const config = this.configManager.getConfig();
-      
-      // Create transporter
-      this.transporter = TransportFactory.createTransporter(config);
-      
-      // Log transport info
-      const transportInfo = TransportFactory.getTransportInfo(config.transport);
-      console.error(`Nodemailer MCP Server initialized with ${transportInfo}`);
-      
-      if (config.debug) {
-        console.error('Debug mode enabled');
-      }
-      
-      if (config.pool) {
-        console.error(`Connection pooling enabled (max connections: ${config.maxConnections}, max messages: ${config.maxMessages})`);
-      }
+  // Base URL
+  BASE_URL?: string;
 
-      // Setup MCP tool
-      this.setupEmailTool();
+  // Email Service Configuration
+  EMAIL_SERVICE?: string;
 
-    } catch (error) {
-      if (error instanceof Error) {
-        console.error(`Configuration error: ${error.message}`);
-        this.configManager.printUsage();
-        process.exit(1);
-      }
-      throw error;
-    }
-  }
+  // SMTP Configuration
+  SMTP_HOST?: string;
+  SMTP_PORT?: string;
+  SMTP_SECURE?: string;
+  SMTP_USER?: string;
+  SMTP_PASS?: string;
+  SMTP_SERVICE?: string;
+  SMTP_POOL?: string;
+  SMTP_MAX_CONNECTIONS?: string;
+  SMTP_MAX_MESSAGES?: string;
 
-  private setupEmailTool(): void {
-    const config = this.configManager.getConfig();
-    
-    // Determine if we need to require from/replyTo parameters
-    const requireFrom = !config.defaultSender;
-    const requireReplyTo = !config.defaultReplyTo || config.defaultReplyTo.length === 0;
-    
-    // Create dynamic schema based on configuration
-    const toolSchema = EmailValidator.createMCPToolSchema({
-      requireFrom,
-      requireReplyTo,
-    });
+  // Gmail Configuration
+  GMAIL_USER?: string;
+  GMAIL_PASS?: string;
 
-    this.server.tool(
-      'send-email',
-      'Send an email using Nodemailer with flexible transport support',
-      toolSchema,
-      async (params: any) => {
-        try {
-          console.error(`Debug - Sending email with transport: ${TransportFactory.getTransportInfo(config.transport)}`);
-          
-          // Validate parameters
-          const validatedParams = EmailValidator.validateMCPParams(params, z.object(toolSchema));
-          
-          // Convert to email data format
-          const emailData = EmailValidator.convertMCPParamsToEmailData(validatedParams, {
-            defaultSender: config.defaultSender,
-            defaultReplyTo: config.defaultReplyTo,
-          });
+  // AWS SES Configuration
+  AWS_ACCESS_KEY_ID?: string;
+  AWS_SECRET_ACCESS_KEY?: string;
+  AWS_REGION?: string;
 
-          console.error(`Email request: ${JSON.stringify({
-            to: emailData.to,
-            subject: emailData.subject,
-            from: emailData.from,
-            hasHtml: !!emailData.html,
-            hasAttachments: !!emailData.attachments?.length,
-          })}`);
+  // Default Email Settings
+  DEFAULT_SENDER_EMAIL?: string;
+  DEFAULT_REPLY_TO_EMAILS?: string;
+  DEBUG_EMAIL?: string;
 
-          // Send email
-          const info = await this.transporter.sendMail(emailData);
-
-          // Check for test message URL (Ethereal Email)
-          const testUrl = TransportFactory.getTestMessageUrl(info);
-          
-          let responseMessage = `Email sent successfully! Message ID: ${info.messageId}`;
-          
-          if (testUrl) {
-            responseMessage += `\nPreview URL: ${testUrl}`;
-          }
-          
-          if (info.response) {
-            responseMessage += `\nServer response: ${info.response}`;
-          }
-
-          return {
-            content: [
-              {
-                type: 'text' as const,
-                text: responseMessage,
-              },
-            ],
-          };
-
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-          console.error(`Email sending failed: ${errorMessage}`);
-          
-          throw new Error(`Email failed to send: ${errorMessage}`);
-        }
-      }
-    );
-  }
-
-  public async start(): Promise<void> {
-    try {
-      // Verify transporter connection
-      console.error('Verifying transport connection...');
-      await TransportFactory.verifyTransporter(this.transporter);
-      console.error('Transport verification successful');
-
-      // Start MCP server
-      const transport = new StdioServerTransport();
-      await this.server.connect(transport);
-      console.error('Nodemailer MCP Server running on stdio');
-
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error(`Failed to start server: ${errorMessage}`);
-      
-      // If verification fails, provide helpful error message
-      if (errorMessage.includes('verification failed')) {
-        console.error('\nTransport verification failed. Please check your configuration:');
-        console.error('- Verify SMTP host, port, and credentials');
-        console.error('- Check network connectivity');
-        console.error('- Ensure authentication method is correct');
-        console.error('- For Gmail, use App Passwords instead of regular passwords');
-        console.error('\nUse --debug flag for more detailed error information');
-      }
-      
-      process.exit(1);
-    }
-  }
-
-  public async shutdown(): Promise<void> {
-    try {
-      if (this.transporter) {
-        // Close transporter connections
-        this.transporter.close();
-        console.error('Transporter connections closed');
-      }
-    } catch (error) {
-      console.error('Error during shutdown:', error);
-    }
-  }
+  // Bindings
+  OAUTH_KV: KVNamespace;
+  EMAIL_TEMPLATES_KV: KVNamespace;
+  MCP_OBJECT: DurableObjectNamespace;
 }
 
-// Handle graceful shutdown
-process.on('SIGINT', async () => {
-  console.error('\nReceived SIGINT, shutting down gracefully...');
-  if (server) {
-    await server.shutdown();
-  }
-  process.exit(0);
-});
+// Define our Nodemailer MCP agent with email tools
+export class NodemailerMCP extends PaidMcpAgent<Env, State, AgentProps> {
+	server = new McpServer({
+		name: "Nodemailer MCP Server",
+		version: "1.0.0",
+	});
 
-process.on('SIGTERM', async () => {
-  console.error('\nReceived SIGTERM, shutting down gracefully...');
-  if (server) {
-    await server.shutdown();
-  }
-  process.exit(0);
-});
+	async init() {
+		try {
+			// Validate email configuration on startup
+			const configManager = new CloudflareEmailConfigManager(this.env);
+			configManager.validateConfig();
+			const config = configManager.getConfig();
 
-// Handle uncaught errors
-process.on('uncaughtException', (error) => {
-  console.error('Uncaught Exception:', error);
-  process.exit(1);
-});
+			console.log(`🚀 Initializing Nodemailer MCP Server`);
+			console.log(`📧 Email Transport: ${configManager.getTransportInfo()}`);
 
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-  process.exit(1);
-});
+			// Verify transport connection (with timeout for Cloudflare Workers)
+			try {
+				const transporter = CloudflareTransportFactory.createTransporter(config);
+				await CloudflareTransportFactory.verifyTransporter(transporter);
+				console.log(`✅ Email transport verified successfully`);
+			} catch (verificationError) {
+				console.warn(`⚠️ Email transport verification failed: ${verificationError instanceof Error ? verificationError.message : 'Unknown error'}`);
+				console.warn(`📧 Email sending may not work properly. Please check your configuration.`);
+			}
 
-// Check for help flag first
-if (process.argv.includes('--help') || process.argv.includes('-h')) {
-  console.log(`
-Usage: mcp-nodemailer [options]
+			// Register free email tools
+			tools.sendEmailTool(this);
+			tools.manageEmailTemplatesTool(this);
+			tools.emailAnalyticsTool(this);
 
-Transport Options:
-  --service <service>        Email service: smtp, gmail, ses (default: smtp)
-  
-SMTP Options:
-  --host <host>             SMTP server hostname
-  --port <port>             SMTP server port (default: 587)
-  --secure                  Use secure connection (TLS)
-  --user <username>         SMTP username
-  --pass <password>         SMTP password
+			// Register paid email tools with templates
+			tools.sendEmailWithTemplatesTool(this, {
+				BASE_URL: this.env.BASE_URL
+			});
 
-Gmail Options:
-  --user <email>            Gmail email address
-  --pass <password>         Gmail password or app password
+			// Register paid bulk email tool with metered billing
+			tools.sendBulkEmailTool(this, {
+				BASE_URL: this.env.BASE_URL
+			});
 
-SES Options:
-  --region <region>         AWS region (default: us-east-1)
-  --access-key-id <key>     AWS Access Key ID
-  --secret-access-key <key> AWS Secret Access Key
+			console.log(`🎯 MCP Server initialized with ${this.server.tools.size} tools`);
 
-General Options:
-  --sender <email>          Default sender email address
-  --reply-to <email>        Default reply-to email address(es)
-  --debug                   Enable debug logging
-  --pool                    Enable connection pooling
-  --max-connections <num>   Maximum pool connections (default: 5)
-  --max-messages <num>      Maximum messages per connection (default: 100)
-
-Environment Variables:
-  SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS
-  GMAIL_USER, GMAIL_PASS
-  AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
-  SENDER_EMAIL_ADDRESS, REPLY_TO_EMAIL_ADDRESSES
-  DEBUG, SMTP_POOL, SMTP_MAX_CONNECTIONS, SMTP_MAX_MESSAGES
-
-Examples:
-  # SMTP
-  mcp-nodemailer --host smtp.gmail.com --port 587 --user user@gmail.com --pass password
-
-  # Gmail
-  mcp-nodemailer --service gmail --user user@gmail.com --pass app-password
-
-  # SES
-  mcp-nodemailer --service ses --access-key-id AKIA... --secret-access-key secret...
-`);
-  process.exit(0);
+		} catch (error) {
+			console.error(`❌ Failed to initialize Nodemailer MCP Server:`, error);
+			throw error;
+		}
+	}
 }
 
-// Main execution
-const server = new NodemailerMCPServer();
+// Create an OAuth provider instance for auth routes
+const oauthProvider = new OAuthProvider({
+	apiRoute: "/sse",
+	apiHandler: NodemailerMCP.mount("/sse") as any,
+	defaultHandler: GoogleHandler as any,
+	authorizeEndpoint: "/authorize",
+	tokenEndpoint: "/token",
+	clientRegistrationEndpoint: "/register",
+});
 
-async function main() {
-  try {
-    await server.start();
-  } catch (error) {
-    console.error('Fatal error in main():', error);
-    process.exit(1);
-  }
-}
+export default {
+	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+		const url = new URL(request.url);
+		const path = url.pathname;
+		
+		// Handle homepage
+		if (path === "/" || path === "") {
+			// @ts-ignore
+			const homePage = await import('./pages/index.html');
+			return new Response(homePage.default, {
+				headers: { "Content-Type": "text/html" },
+			});
+		}
 
-main().catch((error) => {
-  console.error('Fatal error in main():', error);
-  process.exit(1);
-}); 
+		// Handle payment success page
+		if (path === "/payment/success") {
+			// @ts-ignore
+			const successPage = await import('./pages/payment-success.html');
+			return new Response(successPage.default, {
+				headers: { "Content-Type": "text/html" },
+			});
+		}
+
+		// Handle email configuration info page
+		if (path === "/config") {
+			try {
+				const configManager = new CloudflareEmailConfigManager(env);
+				configManager.validateConfig();
+				const config = configManager.getConfig();
+
+				const configInfo = {
+					transport: configManager.getTransportInfo(),
+					defaultSender: config.defaultSender || 'Not configured',
+					defaultReplyTo: config.defaultReplyTo || [],
+					debug: config.debug || false,
+					timestamp: new Date().toISOString(),
+				};
+
+				return new Response(JSON.stringify(configInfo, null, 2), {
+					headers: { 
+						"Content-Type": "application/json",
+						"Access-Control-Allow-Origin": "*",
+					},
+				});
+			} catch (error) {
+				return new Response(JSON.stringify({
+					error: error instanceof Error ? error.message : 'Configuration error',
+					timestamp: new Date().toISOString(),
+				}), {
+					status: 500,
+					headers: { 
+						"Content-Type": "application/json",
+						"Access-Control-Allow-Origin": "*",
+					},
+				});
+			}
+		}
+
+		// Handle health check
+		if (path === "/health") {
+			try {
+				const configManager = new CloudflareEmailConfigManager(env);
+				configManager.validateConfig();
+				
+				return new Response(JSON.stringify({
+					status: 'healthy',
+					service: 'Nodemailer MCP Server',
+					version: '1.0.0',
+					transport: configManager.getTransportInfo(),
+					timestamp: new Date().toISOString(),
+				}), {
+					headers: { 
+						"Content-Type": "application/json",
+						"Access-Control-Allow-Origin": "*",
+					},
+				});
+			} catch (error) {
+				return new Response(JSON.stringify({
+					status: 'unhealthy',
+					error: error instanceof Error ? error.message : 'Unknown error',
+					timestamp: new Date().toISOString(),
+				}), {
+					status: 500,
+					headers: { 
+						"Content-Type": "application/json",
+						"Access-Control-Allow-Origin": "*",
+					},
+				});
+			}
+		}
+		
+		// Handle webhook
+		if (path === "/webhooks/stripe") {
+			return stripeWebhookHandler.fetch(request, env);
+		}
+		
+		// All other routes go to OAuth provider
+		return oauthProvider.fetch(request, env, ctx);
+	},
+}; 
