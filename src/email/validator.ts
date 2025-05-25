@@ -75,7 +75,7 @@ export const EmailDataSchema = z.object({
 
 export type EmailData = z.infer<typeof EmailDataSchema>;
 
-// MCP tool parameters schema (matches the existing Resend implementation)
+// MCP tool parameters schema
 export const MCPEmailToolSchema = z.object({
   to: EmailSchema.describe('Recipient email address'),
   subject: z.string().describe('Email subject line'),
@@ -92,7 +92,6 @@ export const MCPEmailToolSchema = z.object({
   scheduledAt: z.string().optional().describe(
     'Optional parameter to schedule the email. This uses natural language. Examples would be \'tomorrow at 10am\' or \'in 2 hours\' or \'next day at 9am PST\' or \'Friday at 3pm ET\'.'
   ),
-  // Dynamic fields for from and replyTo (added conditionally based on configuration)
 });
 
 export type MCPEmailToolParams = z.infer<typeof MCPEmailToolSchema>;

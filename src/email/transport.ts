@@ -1,12 +1,12 @@
 import nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
-import type { TransportConfig, ServerConfig } from './config-manager.js';
+import type { TransportConfig, EmailServerConfig } from './config.js';
 
-export class TransportFactory {
+export class EmailTransportFactory {
   /**
    * Creates a nodemailer transporter based on the provided configuration
    */
-  public static createTransporter(config: ServerConfig): Transporter {
+  public static createTransporter(config: EmailServerConfig): Transporter {
     const { transport, debug, pool, maxConnections, maxMessages } = config;
 
     let transportOptions: any;
@@ -185,24 +185,6 @@ export class TransportFactory {
 
       default:
         return 'Unknown transport';
-    }
-  }
-
-  /**
-   * Creates a test account for development/testing purposes
-   */
-  public static async createTestAccount(): Promise<{
-    user: string;
-    pass: string;
-    smtp: { host: string; port: number; secure: boolean };
-    imap: { host: string; port: number; secure: boolean };
-    pop3: { host: string; port: number; secure: boolean };
-    web: string;
-  }> {
-    try {
-      return await nodemailer.createTestAccount();
-    } catch (error) {
-      throw new Error('Failed to create test account. This feature requires internet connectivity.');
     }
   }
 

@@ -22,6 +22,10 @@ A flexible, provider-agnostic email sending MCP server using nodemailer that sup
 - [x] Add Docker support with Dockerfile and docker-compose
 - [x] Create comprehensive Docker documentation
 - [x] Test Docker container with SES SMTP configuration
+- [x] Integrate with mcp-boilerplate for Cloudflare Workers deployment
+- [x] Create Cloudflare Workers version with OAuth and Stripe integration
+- [x] Implement free and premium email tools
+- [x] Add rate limiting and usage tracking
 
 ## Future Tasks
 
@@ -60,6 +64,13 @@ A flexible, provider-agnostic email sending MCP server using nodemailer that sup
 - mcp-nodemailer/DOCKER.md - Comprehensive Docker documentation ✅
 - mcp-nodemailer/env.example - Environment variables example ✅
 - mcp-nodemailer/test-ses.sh - SES testing script ✅
+- mcp-nodemailer-cloudflare/ - Cloudflare Workers version ✅
+  - src/email/ - Email configuration and transport management ✅
+  - src/tools/ - Free and premium email tools ✅
+  - src/helpers/ - Rate limiting and constants ✅
+  - package.json - Cloudflare Workers dependencies ✅
+  - wrangler.jsonc - Cloudflare Workers configuration ✅
+  - README.md - Comprehensive Cloudflare Workers documentation ✅
 
 ### Transport Support Priority
 
